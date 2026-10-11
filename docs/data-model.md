@@ -1,116 +1,112 @@
 # QuickNotes Data Model
-
+ 
+We use a **relational (SQL) database - PostgreSQL**.
+ 
 ## Entities
-
-**users**
-
-| Column | Type | Key / constraint |
-|--------|------|------------------|
-| id | BIGINT | PK, auto-increment |
-| email | VARCHAR(255) | UNIQUE, NOT NULL |
-| password_hash | VARCHAR(255) | NOT NULL |
-| created_at | TIMESTAMP | NOT NULL, default now |
-
-**notes**
-
-| Column | Type | Key / constraint |
-|--------|------|------------------|
-| id | BIGINT | PK, auto-increment |
-| user_id | BIGINT | FK → users.id, NOT NULL |
-| title | VARCHAR(100) | NOT NULL |
-| body | TEXT | |
-| created_at | TIMESTAMP | NOT NULL, default now |
-| updated_at | TIMESTAMP | NOT NULL, default now |
-
-**tags**
-
-| Column | Type | Key / constraint |
-|--------|------|------------------|
-| id | BIGINT | PK, auto-increment |
-| user_id | BIGINT | FK → users.id, NOT NULL |
-| name | VARCHAR(50) | NOT NULL, UNIQUE per user |
-
-**note_tags**
-
-| Column | Type | Key / constraint |
-|--------|------|------------------|
-| note_id | BIGINT | PK (part), FK → notes.id |
-| tag_id | BIGINT | PK (part), FK → tags.id |
-
+ 
+**users** - people with an account
+ 
+| Column        | Type      | Rules                    |
+|---------------|-----------|--------------------------|
+| id            | integer   | Primary key              |
+| name          | text      | Required                 |
+| email         | text      | Required, unique         |
+| password_hash | text      | Required (never store plain passwords) |
+| created_at    | timestamp | Defaults to now          |
+  
+**notes** - one note belongs to one user
+ 
+| Column     | Type      | Rules                                 |
+|------------|-----------|---------------------------------------|
+| id         | integer   | Primary key                           |
+| user_id    | integer   | Foreign key → users.id, required      |
+| text       | text      | Required, max 200 characters          |
+| category   | text      | personal / work / study               |
+| created_at | timestamp | Defaults to now                       |
+| updated_at | timestamp | Defaults to now                       |
+ 
+**tags** - labels such as "urgent" (id, name - name is unique)
+ 
+**note_tags** - join table linking notes and tags (note_id, tag_id)
+ 
 ## Relationships
-
-- **One-to-many:** one user has many notes (`notes.user_id`), and one user has many tags (`tags.user_id`).
-- **Many-to-many:** a note can have many tags and a tag can label many notes. This is resolved with the join table `note_tags`, whose composite primary key `(note_id, tag_id)` also prevents duplicates.
-
+ 
+- **users → notes: one-to-many.** One user has many notes; each note
+  has exactly one owner (`notes.user_id`).
+- **notes ↔ tags: many-to-many.** A note can have many tags and a tag
+  can be used on many notes, so the `note_tags` table stores pairs.
+ 
 ## SQL schema
-
-```sql
-CREATE TABLE users (
-  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
-  email         VARCHAR(255) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE notes (
-  id         BIGINT AUTO_INCREMENT PRIMARY KEY,
-  user_id    BIGINT NOT NULL,
-  title      VARCHAR(100) NOT NULL,
-  body       TEXT,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE tags (
-  id      BIGINT AUTO_INCREMENT PRIMARY KEY,
-  user_id BIGINT NOT NULL,
-  name    VARCHAR(50) NOT NULL,
-  UNIQUE (user_id, name),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE note_tags (
-  note_id BIGINT NOT NULL,
-  tag_id  BIGINT NOT NULL,
-  PRIMARY KEY (note_id, tag_id),
-  FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
-  FOREIGN KEY (tag_id)  REFERENCES tags(id)  ON DELETE CASCADE
-);
-
-CREATE INDEX idx_notes_user_created ON notes (user_id, created_at DESC);
-```
-
+ 
+    CREATE TABLE users (
+      id            SERIAL PRIMARY KEY,
+      name          TEXT NOT NULL,
+      email         TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+ 
+    CREATE TABLE notes (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      text       TEXT NOT NULL CHECK (char_length(text) BETWEEN 1 AND 200),
+      category   TEXT NOT NULL DEFAULT 'personal'
+                 CHECK (category IN ('personal', 'work', 'study')),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+ 
+    CREATE TABLE tags (
+      id   SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE
+    );
+ 
+    CREATE TABLE note_tags (
+      note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      tag_id  INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+      PRIMARY KEY (note_id, tag_id)
+    );
+ 
+`SERIAL` is PostgreSQL's auto-numbering integer (1, 2, 3...).
+ 
 ## Example queries
-
-```sql
--- 1. Latest 10 notes of a user
-SELECT id, title, created_at
-FROM notes
-WHERE user_id = 7
-ORDER BY created_at DESC
-LIMIT 10;
-
--- 2. JOIN: notes of a user with a given tag
-SELECT n.id, n.title, t.name AS tag
-FROM notes n
-JOIN note_tags nt ON nt.note_id = n.id
-JOIN tags t       ON t.id = nt.tag_id
-WHERE n.user_id = 7 AND t.name = 'farm';
-
--- 3. Number of notes per tag for a user
-SELECT t.name, COUNT(*) AS note_count
-FROM tags t
-JOIN note_tags nt ON nt.tag_id = t.id
-WHERE t.user_id = 7
-GROUP BY t.name
-ORDER BY note_count DESC;
-```
-
-## Index and reason
-
-`idx_notes_user_created (user_id, created_at DESC)` serves the most common request, "list my newest notes". The database can find one user's rows and read them already sorted, without scanning the whole table or sorting in memory. The cost is slightly slower inserts and extra storage, which is acceptable for a read-heavy app.
-
-## SQL or NoSQL?
-
-I chose a relational SQL database (PostgreSQL or MySQL). The data is clearly structured and relational (users, notes, tags, many-to-many links), and I need integrity guarantees: foreign keys, unique constraints and transactions, for example when a note and its tags are saved together. JOINs make tag queries simple. A single primary with read replicas handles the estimated load, so the horizontal-scaling advantage of NoSQL is not needed yet; it could be added later for caching or search.
+ 
+    -- 1. A user's notes, newest first, 20 per page (page 1)
+    SELECT id, text, category, created_at
+    FROM notes
+    WHERE user_id = 1
+    ORDER BY created_at DESC
+    LIMIT 20 OFFSET 0;
+ 
+    -- 2. A user's notes with the tag "urgent" (JOIN)
+    SELECT notes.id, notes.text
+    FROM notes
+    JOIN note_tags ON note_tags.note_id = notes.id
+    JOIN tags      ON tags.id = note_tags.tag_id
+    WHERE notes.user_id = 1 AND tags.name = 'urgent';
+ 
+    -- 3. Number of notes per category for a user
+    SELECT category, COUNT(*) AS total
+    FROM notes
+    WHERE user_id = 1
+    GROUP BY category;
+ 
+## Indexes
+ 
+    CREATE INDEX idx_notes_user_created ON notes (user_id, created_at DESC);
+ 
+Almost every request is "get this user's notes, newest first". This
+index lets the database jump straight to one user's notes already in
+date order, instead of scanning every note in the table. Primary keys
+and UNIQUE columns (like `email` and `tags.name`) are indexed automatically.
+ 
+## Why SQL instead of NoSQL?
+ 
+Our data is well structured (users, notes, tags) with clear
+relationships and rules (every note needs an owner, text max 200
+characters, valid categories). A relational database enforces these
+rules for us and handles the many-to-many tags relationship with JOINs.
+Our estimate (~180 GB per year) fits comfortably in one PostgreSQL
+primary with read replicas. A document database could be reconsidered
+if notes later hold very flexible content such as images or checklists.
+LIMIT 20 OFFSET 0 returns 20 rows starting from the first one; page 2 would use OFFSET 20. This is how pagination is done in SQL.

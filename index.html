@@ -1,18 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>QuickNotes</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <main class="container">
-    <h1>QuickNotes</h1>
-    <button id="load-btn" type="button">Load notes</button>
-    <p id="status" role="status" aria-live="polite"></p>
-    <ul id="notes-list" class="notes-list"></ul>
-  </main>
-  <script src="api.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QuickNotes - API Client</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="api.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1>QuickNotes</h1>
+      <p>API client (practice server: JSONPlaceholder)</p>
+    </header>
+ 
+    <main>
+      <section class="card">
+        <h2>Create a note</h2>
+        <form id="note-form">
+          <label for="title-input">Title (required, max 100 characters)</label>
+          <input type="text" id="title-input" autocomplete="off" />
+ 
+          <label for="body-input">Details (optional)</label>
+          <textarea id="body-input" rows="3"></textarea>
+ 
+          <button type="submit" id="submit-btn">Create note</button>
+        </form>
+      </section>
+ 
+      <section class="card">
+        <h2>Notes on the server</h2>
+        <button type="button" id="load-btn">Load notes</button>
+        <p id="status" class="status" aria-live="polite"></p>
+        <ul id="notes-list"></ul>
+      </section>
+    </main>
+ 
+    <footer>
+      <p>&copy; 2026 QuickNotes &middot; Web Foundations Project 2</p>
+    </footer>
+  </body>
 </html>
